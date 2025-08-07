@@ -91,6 +91,9 @@ def calculate_alpha_growth(subnet_id, initial_holdings, weeks, start_alpha_suppl
     """
     current_holdings = initial_holdings
     weekly_data = []
+    
+    # Initialize end_total_supply for the first iteration
+    end_total_supply = 0
 
     for week in range(weeks):
         # Start of Period Total Alpha Supply
@@ -179,27 +182,31 @@ st.subheader("Data Source")
 data_source = st.radio(
     "Choose how to get subnet data:",
     ["Use API (requires tao.app API key)", "Enter data manually"],
-    help="If you have a tao.app API key, choose the first option for automatic data fetching. Otherwise, enter the data manually."
+    help="If you have a tao.app API key, choose the first option for automatic data fetching. Otherwise, enter the data manually.",
+    key="data_source_radio"  # Add explicit key for better state management
 )
+
+# Initialize variables
+api_key = None
+manual_supply = 1925000.0  # Default value
+manual_fdv = 135000000.0   # Default value
 
 if data_source == "Use API (requires tao.app API key)":
     api_key = st.text_input(
         "Enter your TAO API Key", 
         type="password",
-        help="Get your API key from tao.app. This will be used to automatically fetch current circulating supply and FDV data."
+        help="Get your API key from tao.app. This will be used to automatically fetch current circulating supply and FDV data.",
+        key="api_key_input"
     )
     if not api_key:
         st.warning("⚠️ Please enter your API key to use automatic data fetching.")
-    manual_supply = 1925000.0  # Default value
-    manual_fdv = 135000000.0   # Default value
 else:
     st.info("💡 You can find current subnet data at tao.app or other Bittensor data sources.")
     col1, col2 = st.columns(2)
     with col1:
-        manual_supply = st.number_input("Current Circulating Supply of Alpha", value=1925000.0, min_value=0.0, step=10000.0)
+        manual_supply = st.number_input("Current Circulating Supply of Alpha", value=1925000.0, min_value=0.0, step=10000.0, key="manual_supply_input")
     with col2:
-        manual_fdv = st.number_input("Current FDV (in USD)", value=135000000.0, min_value=0.0, step=1000000.0, format="%.0f")
-    api_key = None
+        manual_fdv = st.number_input("Current FDV (in USD)", value=135000000.0, min_value=0.0, step=1000000.0, format="%.0f", key="manual_fdv_input")
 
 # Hardcoded optional parameters
 alpha_injection_param = 0.75
@@ -209,7 +216,8 @@ avg_root_staked_tao = 5600000.0
 # Calculate button
 if st.button("Calculate Analysis", type="primary"):
     
-    if data_source == "Use API (requires API key)":
+    # Check the actual string value of the radio button
+    if data_source == "Use API (requires tao.app API key)":
         if not api_key:
             st.error("❌ Please enter your API key to use automatic data fetching.")
             st.stop()
@@ -224,7 +232,7 @@ if st.button("Calculate Analysis", type="primary"):
             st.stop()
         else:
             # Display fetched data
-            st.success(f"✅ Data fetched successfully!")
+            st.success(f"✅ Data fetched successfully from API!")
             col1, col2 = st.columns(2)
             with col1:
                 st.info(f"**Current Circulating Supply:** {start_alpha_supply:,.0f} Alpha tokens")
@@ -234,7 +242,7 @@ if st.button("Calculate Analysis", type="primary"):
         # Use manual data
         start_alpha_supply = manual_supply
         current_fdv_usd = manual_fdv
-        st.success("✅ Using manual data!")
+        st.success("✅ Using manually entered data!")
         col1, col2 = st.columns(2)
         with col1:
             st.info(f"**Current Circulating Supply:** {start_alpha_supply:,.0f} Alpha tokens")
@@ -255,9 +263,9 @@ if st.button("Calculate Analysis", type="primary"):
 
     # Calculate all metrics upfront
     # Cost basis calculations
-    initial_cost_basis = tao_investment / initial_holdings
-    adjusted_cost_basis = tao_investment / results['final_holdings']
-    cost_basis_decrease = ((initial_cost_basis - adjusted_cost_basis) / initial_cost_basis) * 100
+    initial_cost_basis = tao_investment / initial_holdings if initial_holdings > 0 else 0
+    adjusted_cost_basis = tao_investment / results['final_holdings'] if results['final_holdings'] > 0 else 0
+    cost_basis_decrease = ((initial_cost_basis - adjusted_cost_basis) / initial_cost_basis * 100) if initial_cost_basis > 0 else 0
 
     # FDV calculations
     max_supply = 21_000_000
@@ -287,22 +295,18 @@ if st.button("Calculate Analysis", type="primary"):
 if 'results' in st.session_state:
     st.markdown("---")
     st.header("Adjusted Fully Diluted Valuation",
-              help="Shows the resulting adjusted valuation based on the projected circulating supply at the end of the analysis period and staking reward benefits.",
-              divider="blue",
-              width="stretch")
+              help="Shows the resulting adjusted valuation based on the projected circulating supply at the end of the analysis period and staking reward benefits.")
     
     # Center the single metric
     col1, col2, col3 = st.columns([1, 1, 1])
     
     with col2:
-        st.metric("Adjusted FDV", f"${st.session_state.adjusted_fdv_usd:,.0f}", border=True)
+        st.metric("Adjusted FDV", f"${st.session_state.adjusted_fdv_usd:,.0f}")
 
     st.markdown("")
     st.markdown("---")
     st.header("Staking Reward Analysis",
-                 help="Shows how your Alpha holdings grow through staking rewards and how this reduces your effective cost basis per token. The adjusted cost basis divides the initial TAO investment by the final Alpha holdings. ",
-                 divider="blue",
-                width="content")
+                 help="Shows how your Alpha holdings grow through staking rewards and how this reduces your effective cost basis per token. The adjusted cost basis divides the initial TAO investment by the final Alpha holdings.")
     
     # First row - Holdings and Rewards
     col1, col2, col3 = st.columns(3)
@@ -331,9 +335,7 @@ if 'results' in st.session_state:
     st.markdown("")
     st.markdown("---")
     st.header("Adjusted Fully Diluted Valuation (FDV) Analysis",
-              help="Detailed breakdown showing projected circulating supply, staking yield effects, and how they combine to create the total effective discount to traditional FDV.",
-              divider="blue",
-              width="content")
+              help="Detailed breakdown showing projected circulating supply, staking yield effects, and how they combine to create the total effective discount to traditional FDV.")
     
     # First row
     col1, col2, col3 = st.columns(3)
